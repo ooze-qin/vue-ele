@@ -1,8 +1,8 @@
 import axios from "axios";
 import { Message } from "element-ui";
-const BASEUSRL = process.env.NODE_ENV === "development" ? "/api" : ""; //api
+const BASEURL = process.env.NODE_ENV === "development" ? "/api" : ""; //api
 const http = axios.create({
-  baseURL: BASEUSRL //http://localhost:8080/api/getSms/ 只要url中 /api开头的都是接口请求
+  baseURL: BASEURL //http://localhost:8080/api/getSms/ 只要url中 /api开头的都是接口请求
 });
 // 跨域 指的是浏览器由于同源策略 不同域名的请求 就会出现跨域，但是如果是两个后台发起网路请求就不存在跨域
 // http.defaults.baseURL='http://www.web-jshtml.cn/productapi/'

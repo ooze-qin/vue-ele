@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 <template>
   <div id="login">
     <div class="login-wrap">
@@ -60,8 +61,12 @@
               <el-input id="code" v-model="ruleForm.code"></el-input>
             </el-col>
             <el-col :span="9">
-              <el-button type="success" class="block" @click="getCode"
-                >获取验证码</el-button
+              <el-button
+                type="success"
+                v-bind:disabled="codeButtonStates"
+                class="block"
+                @click="getCode"
+                >{{ codeButtonText }}</el-button
               >
             </el-col>
           </el-row>
@@ -71,6 +76,7 @@
           <el-button
             type="danger"
             class="block top"
+            :disabled="buttonStatus"
             @click="submitForm('ruleForm')"
             >{{ this.mode == "login" ? "登录" : "注册" }}</el-button
           >
@@ -83,12 +89,16 @@
 <script>
 import vaildateUtils from "@/utils/validate.js";
 import { onMounted, reactive, ref } from "@vue/composition-api";
-import { get_code } from "@/api/login.js";
+import { get_code, do_register, do_login } from "@/api/login.js";
 export default {
   setup(prop, { refs, root }) {
     // --------------------------------生命周期-------------------------
 
     // --------------------------------data-------------------------
+    const status_username = ref(false);
+    const status_password = ref(false);
+    const status_password1 = ref(false);
+
     // 验证验证码
     let validateCode = (rule, value, callback) => {
       // 过滤非法字符
@@ -111,10 +121,13 @@ export default {
       );
 
       if (value === "") {
+        status_username.value = false;
         callback(new Error("请输入邮箱"));
       } else if (vaildateUtils.test_email(value)) {
+        status_username.value = false;
         callback(new Error("邮箱格式错误"));
       } else {
+        status_username.value = true;
         callback();
       }
     };
@@ -129,10 +142,13 @@ export default {
       );
 
       if (value === "") {
+        status_password.value = false;
         callback(new Error("请输入密码"));
       } else if (vaildateUtils.test_password(value)) {
+        status_password.value = false;
         callback(new Error("密码格式6~20位"));
       } else {
+        status_password.value = true;
         callback();
       }
     };
@@ -143,7 +159,7 @@ export default {
         callback();
         return;
       }
-      console.log("验证重复密码");
+      // console.log("验证重复密码");
 
       // 过滤非法字符
       ruleForm.password1 = value = vaildateUtils.validate_inputValue(
@@ -152,8 +168,10 @@ export default {
       );
 
       if (value !== ruleForm.password) {
+        status_password1.value = false;
         callback(new Error("两次密码不一致"));
       } else {
+        status_password1.value = true;
         callback();
       }
     };
@@ -179,15 +197,28 @@ export default {
       password1: [{ validator: validatePassword1, trigger: "blur" }],
       code: [{ validator: validateCode, trigger: "blur" }]
     });
+    // 定义登录按钮禁用和启用
+    const buttonStatus = ref(true);
+    //定义验证码按钮的启用和禁用
+    const codeButtonStates = ref(false);
+    // 定义验证码按钮文本
+    const codeButtonText = ref("获取验证码");
+    // 定义验证码延迟定时器
+    const timer_delay = ref(null);
+    // 定义验证码倒计时定时器
+    const timer_count_down = ref(null);
+
     // ------------------------------methods-------------------------
     const submitForm = formName => {
       // 对表单的每一个字段进行验证
       refs[formName].validate(result => {
         if (result) {
-          alert("submit!");
+          // 执行登录注册
+          mode.value === "login" ? doLogin() : doRegister();
+          // alert("submit!");
         } else {
-          console.log("error submit!!");
-          console.log(result);
+          // console.log("error submit!!");
+          // console.log(result);
           return false;
         }
       });
@@ -199,28 +230,159 @@ export default {
       mode.value = item.type;
       // 点击切换的时候清空表单数据
       refs["ruleForm"].resetFields();
+      // 还原验证码的相关状态
+      resetCodeButton();
+      // 还原登录注册按钮转态
+      buttonStatus.value = true;
     };
 
     // 获取验证码
     const getCode = () => {
-      // 判断如果邮箱不存在
-      if (ruleForm.username == "") {
-        root.$message.error("邮箱不能为空");
+      const { result, filed } = validateFileds();
+      let offset = 0;
+      // 判断邮箱格式 密码 重复密码 的格式
+      if (!result) {
+        //true 验证通过 false 验证失败
+        filed.map(item => {
+          offset += 40;
+          root.$message({
+            type: "error",
+            message: `错误字段:${item.message}`,
+            offset: offset,
+            duration: 2000
+          });
+          // root.$message.error(`错误字段:${item.filed}`);
+        });
         return false;
       }
+      //让按钮禁用 显示'发送中'
+      setCodeButton({
+        status: true,
+        text: "发送中"
+      });
 
+      //为了模拟网络延迟 定时器
+      timer_delay.value = setTimeout(() => {
+        const data = {
+          username: ruleForm.username,
+          module: mode.value
+        };
+        get_code(data)
+          .then(res => {
+            // 显示倒计时
+            countDown(10);
+            //获取到对应的验证码
+            root.$message.success(res.data.message);
+
+            // 登录注册按钮启用
+            buttonStatus.value = false;
+          })
+          .catch(err => {
+            // console.log("请求错误",err)
+            console.log(2);
+          });
+      }, 3000);
+    };
+
+    // -----------------------------------辅助方法------------------------
+    // 验证码定时器的倒计时效果
+    const countDown = timer => {
+      if (timer_count_down.value) {
+        //存在定时器
+        clearTimeout(timer_count_down.value);
+      }
+      timer_count_down.value = setInterval(() => {
+        timer--;
+        if (timer === 0) {
+          clearInterval(timer_count_down.value);
+          // 显示重新发送
+          setCodeButton({
+            status: false,
+            text: "重新发送"
+          });
+        } else {
+          codeButtonText.value = `倒计时${timer}秒`;
+        }
+      }, 1000);
+    };
+
+    // 还原验证码的相关状态
+    const resetCodeButton = () => {
+      // 默认 启用 获取验证码
+      setCodeButton({
+        status: false,
+        text: "获取验证码"
+      });
+      // 清空所有定时器
+      clearTimeout(timer_delay.value);
+      clearInterval(timer_count_down.value);
+    };
+
+    // 设置获取验证码的相关状态
+    const setCodeButton = ({ status, text }) => {
+      codeButtonStates.value = status;
+      codeButtonText.value = text;
+    };
+
+    // 执行登录
+    const doLogin = () => {
       const data = {
         username: ruleForm.username,
-        module: mode.value
+        password: ruleForm.password,
+        code: ruleForm.code
       };
-      get_code(data)
+      do_login(data)
         .then(res => {
           root.$message.success(res.data.message);
         })
-        .catch(err => {
-          // console.log("请求错误",err)
-          console.log(2);
-        });
+        .catch(err => {});
+    };
+
+    // 执行注册
+    const doRegister = () => {
+      const data = {
+        username: ruleForm.username,
+        password: ruleForm.password,
+        code: ruleForm.code
+      };
+      do_register(data)
+        .then(res => {
+          // 提示注册成功
+          root.$message.success(res.data.message);
+          // 注册成功后直接切换到登录tab
+          toggleMeau(meauTab[0]);
+        })
+        .catch(err => {});
+    };
+
+    // 获取验证码时候验证相关字段
+    const validateFileds = () => {
+      //let _filed = staatus_username.value ? '' : '邮箱格式错误';
+      const _filed_arr = [
+        {
+          filed: "username",
+          flag: status_username.value,
+          message: "邮箱格式错误"
+        },
+        {
+          filed: "password",
+          flag: status_password.value,
+          message: "密码格式错误"
+        },
+        {
+          filed: "password1",
+          flag: status_password1.value,
+          message: "重复密码错误"
+        }
+      ].filter(item => !item.flag);
+      console.log(_filed_arr);
+      return {
+        result:
+          status_username.value &&
+          status_password.value &&
+          status_password1.value,
+        filed: _filed_arr
+      };
     };
 
     return {
@@ -230,7 +392,10 @@ export default {
       rules,
       toggleMeau,
       submitForm,
-      getCode
+      getCode,
+      buttonStatus,
+      codeButtonStates,
+      codeButtonText
     };
   }
 };
